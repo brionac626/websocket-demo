@@ -88,7 +88,7 @@ func (c *WebsocketClient) ReadMessage() {
 }
 
 type ChatroomData struct {
-	Action   int64  `json:"action"`
+	Action   string `json:"action"`
 	Chatroom string `json:"chatroom,omitempty"`
 	Message  string `json:"message,omitempty"`
 }
@@ -107,27 +107,27 @@ func (c *WebsocketClient) ProcessMessage() {
 
 			switch results[0].Str {
 			case "create":
-				rc := NewRedisClient()
-				if rc == nil {
+				resp := make([]byte, 0)
+				chatroomID := c.CreateChatroom()
 
+				if chatroomID != "" {
+					resp = RespSuccessCreateChatroom(chatroomID)
+				} else {
+					resp = RespInternalError(999)
 				}
-				chatroomID, err := rc.SetChatroom(c.token)
-				if err != nil {
-					log.Println(err)
-					break
-				}
-				resp, err := json.Marshal(&ChatroomData{Action: 1, Chatroom: chatroomID})
-				if err != nil {
-					log.Println(err)
-					break
-				}
-				if err := c.WriteMessage(resp); err != nil {
-					log.Println(err)
-					break
+
+				if resp != nil {
+					if err := c.WriteMessage(resp); err != nil {
+						log.Println(err)
+						break
+					}
 				}
 			case "join":
 			case "chat":
 			default:
+				if err := c.WriteMessage(RespInternalError(19999)); err != nil {
+					log.Println(err)
+				}
 			}
 		default:
 		}
@@ -140,15 +140,27 @@ func (c *WebsocketClient) CloseClient() error {
 	return c.wsConn.Close()
 }
 
-func (c *WebsocketClient) CreateChatroom() error {
-	return nil
+func (c *WebsocketClient) CreateChatroom() string {
+	rc := NewRedisClient()
+	if rc == nil {
+		log.Println("redis client didn't init")
+		return ""
+	}
+
+	chatroomID, err := rc.SetChatroom(c.token)
+	if err != nil {
+		log.Println(err)
+		return ""
+	}
+
+	return chatroomID
 }
 
 func (c *WebsocketClient) PushChatroomMember() error {
 	return nil
 }
 
-func (c *WebsocketClient) GetChatroomMemberToken() error {
+func (c *WebsocketClient) GetChatroomMemberToken() []string {
 	return nil
 }
 
@@ -173,7 +185,17 @@ func ShowServerStatus() {
 	}
 }
 
-func RespInternalError(code int64) []byte {
+func RespSuccessCreateChatroom(chatroomID string) []byte {
+	resp, err := json.Marshal(&ChatroomData{Action: "1", Chatroom: chatroomID})
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+
+	return resp
+}
+
+func RespInternalError(code string) []byte {
 	resp, err := json.Marshal(&ChatroomData{Action: code})
 	if err != nil {
 		log.Println(err)
