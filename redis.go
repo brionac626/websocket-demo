@@ -2,9 +2,12 @@ package main
 
 import (
 	"github.com/go-redis/redis"
+	uuid "github.com/satori/go.uuid"
 )
 
 var uClient *RedisConnection
+
+const redisMemberKey = "member:"
 
 type RedisConnection struct {
 	Client *redis.Client
@@ -12,9 +15,9 @@ type RedisConnection struct {
 
 func InitRedis() error {
 	client := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
-		DB:       0,
+		Addr: "localhost:6379",
+		DB:   0,
+		// Password: "",
 	})
 
 	_, err := client.Ping().Result()
@@ -25,4 +28,22 @@ func InitRedis() error {
 	uClient = &RedisConnection{Client: client}
 
 	return nil
+}
+
+func NewRedisClient() *RedisConnection {
+	return uClient
+}
+
+func (conn *RedisConnection) SetChatroom(token string) (string, error) {
+	chatroomID := uuid.NewV4().String()
+	_, err := conn.Client.SAdd(redisMemberKey+chatroomID, token).Result()
+	if err != nil {
+		return "", err
+	}
+
+	return chatroomID, nil
+}
+
+func (conn *RedisConnection) GetMember(chatroomID string) ([]string, error) {
+	return conn.Client.SMembers(chatroomID).Result()
 }
