@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -87,6 +88,7 @@ func (c *WebsocketClient) ReadMessage() {
 }
 
 type ChatroomData struct {
+	Action   int64  `json:"action"`
 	Chatroom string `json:"chatroom"`
 	Message  string `json:"message,omitempty"`
 }
@@ -105,16 +107,28 @@ func (c *WebsocketClient) ProcessMessage() {
 
 			switch results[0].Str {
 			case "create":
+				rc := NewRedisClient()
+				chatroomID, err := rc.SetChatroom(c.token)
+				if err != nil {
+					log.Println(err)
+					break
+				}
+				resp, err := json.Marshal(&ChatroomData{Action: 1, Chatroom: chatroomID})
+				if err != nil {
+					log.Println(err)
+					break
+				}
+				if err := c.WriteMessage(resp); err != nil {
+					log.Println(err)
+					break
+				}
 			case "join":
 			case "chat":
 			default:
 			}
-
-			if err := c.WriteMessage(data); err != nil {
-				log.Println(err)
-			}
 		default:
 		}
+
 	}
 }
 
