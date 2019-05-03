@@ -89,7 +89,7 @@ func (c *WebsocketClient) ReadMessage() {
 
 type ChatroomData struct {
 	Action   int64  `json:"action"`
-	Chatroom string `json:"chatroom"`
+	Chatroom string `json:"chatroom,omitempty"`
 	Message  string `json:"message,omitempty"`
 }
 
@@ -108,6 +108,9 @@ func (c *WebsocketClient) ProcessMessage() {
 			switch results[0].Str {
 			case "create":
 				rc := NewRedisClient()
+				if rc == nil {
+
+				}
 				chatroomID, err := rc.SetChatroom(c.token)
 				if err != nil {
 					log.Println(err)
@@ -168,4 +171,14 @@ func ShowServerStatus() {
 			fmt.Println(allConn)
 		}
 	}
+}
+
+func RespInternalError(code int64) []byte {
+	resp, err := json.Marshal(&ChatroomData{Action: code})
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
+
+	return resp
 }
