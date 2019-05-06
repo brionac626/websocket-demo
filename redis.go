@@ -34,8 +34,10 @@ func NewRedisClient() *RedisConnection {
 	return uClient
 }
 
-func (conn *RedisConnection) SetChatroom(token string) (string, error) {
-	chatroomID := uuid.NewV4().String()
+func (conn *RedisConnection) SetChatroom(chatroomID string, token ...string) (string, error) {
+	if chatroomID == "" {
+		chatroomID = uuid.NewV4().String()
+	}
 	_, err := conn.Client.SAdd(redisMemberKey+chatroomID, token).Result()
 	if err != nil {
 		return "", err
@@ -45,5 +47,5 @@ func (conn *RedisConnection) SetChatroom(token string) (string, error) {
 }
 
 func (conn *RedisConnection) GetMember(chatroomID string) ([]string, error) {
-	return conn.Client.SMembers(chatroomID).Result()
+	return conn.Client.SMembers(redisMemberKey + chatroomID).Result()
 }

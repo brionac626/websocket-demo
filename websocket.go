@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -28,6 +29,7 @@ type WebsocketClient struct {
 	token  string
 	wsConn *websocket.Conn
 	data   chan []byte
+	rc     *RedisConnection
 }
 
 func wsHandle(w http.ResponseWriter, r *http.Request) {
@@ -50,16 +52,17 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 }
 
 func NewWsClient(conn *websocket.Conn, token string) *WebsocketClient {
-	client := WebsocketClient{
+	client := &WebsocketClient{
 		lock:   &sync.Mutex{},
 		token:  token,
 		wsConn: conn,
 		data:   make(chan []byte, 3000),
+		rc:     NewRedisClient(),
 	}
 
 	allConn.Store(token, client)
 
-	return &client
+	return client
 }
 
 func (c *WebsocketClient) WriteMessage(data []byte) error {
@@ -103,7 +106,7 @@ func (c *WebsocketClient) ProcessMessage() {
 			}
 			fmt.Println(string(data))
 
-			results := gjson.GetManyBytes(data, "action", "data.chatroomID", "data.message")
+			results := gjson.GetManyBytes(data, "action", "data.chatroom", "data.message")
 
 			switch results[0].Str {
 			case "create":
@@ -123,7 +126,41 @@ func (c *WebsocketClient) ProcessMessage() {
 					}
 				}
 			case "join":
+				// membersResult := gjson.GetBytes(data, "data.members")
+				// memberTokens := []string{}
+				// for _, v := range membersResult.Array() {
+				// 	memberTokens = append(memberTokens, v.Str)
+				// }
+				err := c.PushChatroomMember(results[1].Str, []string{c.token})
+				if err != nil {
+					log.Println(err)
+					continue
+				}
+				if err := c.WriteMessage(RespChatroomMessage(results[1].Str, "join chatroom succed")); err != nil {
+					log.Println(err)
+				}
 			case "chat":
+				tokens, err := c.GetChatroomMemberToken(results[1].Str)
+				if err != nil {
+					log.Println(err)
+					if err := c.WriteMessage(RespInternalError(2000)); err != nil {
+						log.Println(err)
+					}
+				}
+				for _, token := range tokens {
+					client, ok := allConn.Load(token)
+					if !ok {
+						log.Println("user not exists")
+						continue
+					}
+					go func() {
+						err := client.(*WebsocketClient).WriteMessage(RespChatroomMessage(results[1].Str, results[2].Str))
+						if err != nil {
+							log.Println(err)
+							return
+						}
+					}()
+				}
 			default:
 				if err := c.WriteMessage(RespInternalError(19999)); err != nil {
 					log.Println(err)
@@ -141,13 +178,12 @@ func (c *WebsocketClient) CloseClient() error {
 }
 
 func (c *WebsocketClient) CreateChatroom() string {
-	rc := NewRedisClient()
-	if rc == nil {
+	if c.rc == nil {
 		log.Println("redis client didn't init")
 		return ""
 	}
 
-	chatroomID, err := rc.SetChatroom(c.token)
+	chatroomID, err := c.rc.SetChatroom("", c.token)
 	if err != nil {
 		log.Println(err)
 		return ""
@@ -156,12 +192,17 @@ func (c *WebsocketClient) CreateChatroom() string {
 	return chatroomID
 }
 
-func (c *WebsocketClient) PushChatroomMember() error {
+func (c *WebsocketClient) PushChatroomMember(chatroomID string, token []string) error {
+	_, err := c.rc.SetChatroom(chatroomID, token...)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (c *WebsocketClient) GetChatroomMemberToken() []string {
-	return nil
+func (c *WebsocketClient) GetChatroomMemberToken(chatroomID string) ([]string, error) {
+	return c.rc.GetMember(chatroomID)
 }
 
 func SendMessage(token string, message []byte) error {
@@ -189,14 +230,24 @@ func RespSuccessCreateChatroom(chatroomID string) []byte {
 	resp, err := json.Marshal(&ChatroomData{Action: "1", Chatroom: chatroomID})
 	if err != nil {
 		log.Println(err)
-		return nil
+		return RespInternalError(5000)
 	}
 
 	return resp
 }
 
-func RespInternalError(code string) []byte {
-	resp, err := json.Marshal(&ChatroomData{Action: code})
+func RespChatroomMessage(chatroomID, message string) []byte {
+	resp, err := json.Marshal(&ChatroomData{Action: "3", Chatroom: chatroomID, Message: message})
+	if err != nil {
+		log.Println(err)
+		return RespInternalError(5000)
+	}
+
+	return resp
+}
+
+func RespInternalError(code int) []byte {
+	resp, err := json.Marshal(&ChatroomData{Action: strconv.Itoa(code)})
 	if err != nil {
 		log.Println(err)
 		return nil
