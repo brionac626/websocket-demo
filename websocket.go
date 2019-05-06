@@ -147,10 +147,13 @@ func (c *WebsocketClient) ProcessMessage() {
 						log.Println(err)
 					}
 				}
+
+				offlineMember := []string{}
 				for _, token := range tokens {
 					client, ok := allConn.Load(token)
 					if !ok {
-						log.Println("user not exists")
+						// log.Println("user not exists")
+						offlineMember = append(offlineMember, token)
 						continue
 					}
 					go func() {
@@ -160,6 +163,10 @@ func (c *WebsocketClient) ProcessMessage() {
 							return
 						}
 					}()
+				}
+
+				if err := NewRedisClient().RemoveMember(results[1].Str, offlineMember...); err != nil {
+					log.Println(err)
 				}
 			default:
 				if err := c.WriteMessage(RespInternalError(19999)); err != nil {

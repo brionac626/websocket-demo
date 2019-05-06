@@ -49,3 +49,12 @@ func (conn *RedisConnection) SetChatroom(chatroomID string, token ...string) (st
 func (conn *RedisConnection) GetMember(chatroomID string) ([]string, error) {
 	return conn.Client.SMembers(redisMemberKey + chatroomID).Result()
 }
+
+func (conn *RedisConnection) RemoveMember(chatroomID string, tokens ...string) error {
+	_, err := conn.Client.SRem(redisMemberKey+chatroomID, tokens).Result()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
