@@ -126,11 +126,6 @@ func (c *WebsocketClient) ProcessMessage() {
 					}
 				}
 			case "join":
-				// membersResult := gjson.GetBytes(data, "data.members")
-				// memberTokens := []string{}
-				// for _, v := range membersResult.Array() {
-				// 	memberTokens = append(memberTokens, v.Str)
-				// }
 				err := c.PushChatroomMember(results[1].Str, []string{c.token})
 				if err != nil {
 					log.Println(err)
@@ -165,6 +160,9 @@ func (c *WebsocketClient) ProcessMessage() {
 					}()
 				}
 
+				if err := NewRedisClient().RenewExpireTime(results[1].Str); err != nil {
+					log.Println(err)
+				}
 				if err := NewRedisClient().RemoveMember(results[1].Str, offlineMember...); err != nil {
 					log.Println(err)
 				}

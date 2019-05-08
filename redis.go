@@ -7,10 +7,13 @@ import (
 
 var uClient *RedisConnection
 
-const redisMemberKey = "member:"
+const (
+	redisMemberKey     = "member:"
+	chatroomExpireTime = 43200
+)
 
 type RedisConnection struct {
-	Client *redis.Client
+	client *redis.Client
 }
 
 func InitRedis() error {
@@ -25,7 +28,7 @@ func InitRedis() error {
 		return err
 	}
 
-	uClient = &RedisConnection{Client: client}
+	uClient = &RedisConnection{client: client}
 
 	return nil
 }
@@ -38,7 +41,12 @@ func (conn *RedisConnection) SetChatroom(chatroomID string, token ...string) (st
 	if chatroomID == "" {
 		chatroomID = uuid.NewV4().String()
 	}
-	_, err := conn.Client.SAdd(redisMemberKey+chatroomID, token).Result()
+
+	p := conn.client.Pipeline()
+	p.SAdd(redisMemberKey+chatroomID, token)
+	p.Expire(redisMemberKey+chatroomID, chatroomExpireTime)
+	_, err := p.Exec()
+
 	if err != nil {
 		return "", err
 	}
@@ -47,11 +55,20 @@ func (conn *RedisConnection) SetChatroom(chatroomID string, token ...string) (st
 }
 
 func (conn *RedisConnection) GetMember(chatroomID string) ([]string, error) {
-	return conn.Client.SMembers(redisMemberKey + chatroomID).Result()
+	return conn.client.SMembers(redisMemberKey + chatroomID).Result()
 }
 
 func (conn *RedisConnection) RemoveMember(chatroomID string, tokens ...string) error {
-	_, err := conn.Client.SRem(redisMemberKey+chatroomID, tokens).Result()
+	_, err := conn.client.SRem(redisMemberKey+chatroomID, tokens).Result()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (conn *RedisConnection) RenewExpireTime(chatroomID string) error {
+	_, err := conn.client.Expire(redisMemberKey+chatroomID, chatroomExpireTime).Result()
 	if err != nil {
 		return err
 	}
