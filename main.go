@@ -3,10 +3,12 @@ package main
 import (
 	"log"
 	"net/http"
+
+	"websocket_demo/redis"
 )
 
 func main() {
-	if err := InitRedis(); err != nil {
+	if err := redis.InitRedis(); err != nil {
 		log.Fatalln(err)
 	}
 	http.HandleFunc("/ws", wsHandle)

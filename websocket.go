@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"websocket_demo/redis"
+
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
 )
@@ -29,7 +31,7 @@ type WebsocketClient struct {
 	token  string
 	wsConn *websocket.Conn
 	data   chan []byte
-	rc     *RedisConnection
+	rc     *redis.RedisConnection
 }
 
 func wsHandle(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +59,7 @@ func NewWsClient(conn *websocket.Conn, token string) *WebsocketClient {
 		token:  token,
 		wsConn: conn,
 		data:   make(chan []byte, 3000),
-		rc:     NewRedisClient(),
+		rc:     redis.NewRedisClient(),
 	}
 
 	allConn.Store(token, client)
@@ -160,10 +162,10 @@ func (c *WebsocketClient) ProcessMessage() {
 					}()
 				}
 
-				if err := NewRedisClient().RenewExpireTime(results[1].Str); err != nil {
+				if err := redis.NewRedisClient().RenewExpireTime(results[1].Str); err != nil {
 					log.Println(err)
 				}
-				if err := NewRedisClient().RemoveMember(results[1].Str, offlineMember...); err != nil {
+				if err := redis.NewRedisClient().RemoveMember(results[1].Str, offlineMember...); err != nil {
 					log.Println(err)
 				}
 			default:
