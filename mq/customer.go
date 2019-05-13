@@ -2,6 +2,7 @@ package mq
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -12,7 +13,7 @@ const (
 	nsqLookUpURL = "localhost:4161"
 )
 
-func NewCustomer() {
+func NewCustomer(messageData chan []byte) {
 	config := nsq.NewConfig()
 	config.LookupdPollInterval = 1 * time.Second
 	c, err := nsq.NewConsumer("chatroom", "message", config)
@@ -21,7 +22,8 @@ func NewCustomer() {
 		return
 	}
 
-	c.AddHandler(&MessageHandler{MessageChan: make(chan []byte, 3000)})
+	c.SetLogger(nil, 0)
+	c.AddHandler(&MessageHandler{MessageChan: messageData})
 
 	if err := c.ConnectToNSQLookupd(nsqLookUpURL); err != nil {
 		log.Println(err)
@@ -36,8 +38,9 @@ type MessageHandler struct {
 
 func (h *MessageHandler) HandleMessage(msg *nsq.Message) error {
 	if msg.Body == nil {
-		return errors.New("")
+		return errors.New("no message data")
 	}
+	fmt.Println("123", string(msg.Body))
 	sendMQData(h.MessageChan, msg.Body)
 
 	return nil

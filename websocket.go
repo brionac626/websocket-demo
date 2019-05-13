@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"websocket_demo/mq"
 	"websocket_demo/redis"
 
 	"github.com/gorilla/websocket"
@@ -24,14 +25,18 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var allConn sync.Map
+var (
+	allConn      sync.Map
+	customerData chan []byte
+)
 
 type WebsocketClient struct {
-	lock   *sync.Mutex
-	token  string
-	wsConn *websocket.Conn
-	data   chan []byte
-	rc     *redis.RedisConnection
+	lock     *sync.Mutex
+	token    string
+	wsConn   *websocket.Conn
+	data     chan []byte
+	rc       *redis.RedisConnection
+	producer *mq.NsqProducer
 }
 
 func wsHandle(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +53,11 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := NewWsClient(conn, token)
+	var initCustomer sync.Once
+	go initCustomer.Do(func() {
+		customerData = make(chan []byte, 3000)
+		mq.NewCustomer(customerData)
+	})
 	go c.ReadMessage()
 	go c.ProcessMessage()
 	// go ShowServerStatus()
@@ -55,11 +65,12 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 
 func NewWsClient(conn *websocket.Conn, token string) *WebsocketClient {
 	client := &WebsocketClient{
-		lock:   &sync.Mutex{},
-		token:  token,
-		wsConn: conn,
-		data:   make(chan []byte, 3000),
-		rc:     redis.NewRedisClient(),
+		lock:     &sync.Mutex{},
+		token:    token,
+		wsConn:   conn,
+		data:     make(chan []byte, 3000),
+		rc:       redis.NewRedisClient(),
+		producer: mq.NewProducer(),
 	}
 
 	allConn.Store(token, client)
@@ -137,6 +148,11 @@ func (c *WebsocketClient) ProcessMessage() {
 					log.Println(err)
 				}
 			case "chat":
+				// err := c.producer.SendMessageTopic(data)
+				// if err != nil {
+				// 	log.Println(err)
+				// }
+				// fmt.Println(string(mq.GetMQData(customerData)))
 				tokens, err := c.GetChatroomMemberToken(results[1].Str)
 				if err != nil {
 					log.Println(err)

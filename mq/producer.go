@@ -24,7 +24,7 @@ func NewProducer() *NsqProducer {
 	return &NsqProducer{Producer: p}
 }
 
-func (np *NsqProducer) CreateChatroomTopic(message []byte) error {
+func (np *NsqProducer) SendMessageTopic(message []byte) error {
 	err := np.Producer.Publish("chatroom", message)
 	if err != nil {
 		return err
