@@ -1,6 +1,8 @@
 package redis
 
 import (
+	"time"
+
 	uuid "github.com/satori/go.uuid"
 )
 
@@ -16,7 +18,7 @@ func (conn *RedisConnection) SetChatroom(chatroomID string, token ...string) (st
 
 	p := conn.client.Pipeline()
 	p.SAdd(redisMemberKey+chatroomID, token)
-	p.Expire(redisMemberKey+chatroomID, chatroomExpireTime)
+	p.Expire(redisMemberKey+chatroomID, chatroomExpireTime*time.Second)
 	_, err := p.Exec()
 
 	if err != nil {
@@ -40,7 +42,7 @@ func (conn *RedisConnection) RemoveMember(chatroomID string, tokens ...string) e
 }
 
 func (conn *RedisConnection) RenewExpireTime(chatroomID string) error {
-	_, err := conn.client.Expire(redisMemberKey+chatroomID, chatroomExpireTime).Result()
+	_, err := conn.client.Expire(redisMemberKey+chatroomID, chatroomExpireTime*time.Second).Result()
 	if err != nil {
 		return err
 	}

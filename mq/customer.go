@@ -2,7 +2,6 @@ package mq
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -22,7 +21,7 @@ func NewCustomer(messageData chan []byte) {
 		return
 	}
 
-	c.SetLogger(nil, 0)
+	c.SetLogger(nil, nsq.LogLevelError)
 	c.AddHandler(&MessageHandler{MessageChan: messageData})
 
 	if err := c.ConnectToNSQLookupd(nsqLookUpURL); err != nil {
@@ -30,6 +29,8 @@ func NewCustomer(messageData chan []byte) {
 		return
 	}
 
+	block := make(chan bool)
+	<-block
 }
 
 type MessageHandler struct {
@@ -40,24 +41,7 @@ func (h *MessageHandler) HandleMessage(msg *nsq.Message) error {
 	if msg.Body == nil {
 		return errors.New("no message data")
 	}
-	fmt.Println("123", string(msg.Body))
-	sendMQData(h.MessageChan, msg.Body)
+	h.MessageChan <- msg.Body
 
 	return nil
-}
-
-func sendMQData(bc chan []byte, data []byte) {
-	if _, ok := <-bc; !ok {
-		return
-	}
-
-	bc <- data
-}
-
-func GetMQData(bc chan []byte) []byte {
-	if _, ok := <-bc; !ok {
-		return nil
-	}
-
-	return <-bc
 }

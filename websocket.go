@@ -31,12 +31,12 @@ var (
 )
 
 type WebsocketClient struct {
-	lock     *sync.Mutex
-	token    string
-	wsConn   *websocket.Conn
-	data     chan []byte
-	rc       *redis.RedisConnection
-	producer *mq.NsqProducer
+	lock   *sync.Mutex
+	token  string
+	wsConn *websocket.Conn
+	data   chan []byte
+	rc     *redis.RedisConnection
+	np     *mq.NsqProducer
 }
 
 func wsHandle(w http.ResponseWriter, r *http.Request) {
@@ -54,23 +54,24 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 
 	c := NewWsClient(conn, token)
 	var initCustomer sync.Once
+	customerData = make(chan []byte, 3000)
 	go initCustomer.Do(func() {
-		customerData = make(chan []byte, 3000)
 		mq.NewCustomer(customerData)
 	})
 	go c.ReadMessage()
 	go c.ProcessMessage()
+	go c.ReadChatroomMessage()
 	// go ShowServerStatus()
 }
 
 func NewWsClient(conn *websocket.Conn, token string) *WebsocketClient {
 	client := &WebsocketClient{
-		lock:     &sync.Mutex{},
-		token:    token,
-		wsConn:   conn,
-		data:     make(chan []byte, 3000),
-		rc:       redis.NewRedisClient(),
-		producer: mq.NewProducer(),
+		lock:   &sync.Mutex{},
+		token:  token,
+		wsConn: conn,
+		data:   make(chan []byte, 3000),
+		rc:     redis.NewRedisClient(),
+		np:     mq.NewProducer(),
 	}
 
 	allConn.Store(token, client)
@@ -117,7 +118,6 @@ func (c *WebsocketClient) ProcessMessage() {
 				// log.Println("channel not ready")
 				return
 			}
-			fmt.Println(string(data))
 
 			results := gjson.GetManyBytes(data, "action", "data.chatroom", "data.message")
 
@@ -148,42 +148,11 @@ func (c *WebsocketClient) ProcessMessage() {
 					log.Println(err)
 				}
 			case "chat":
-				// err := c.producer.SendMessageTopic(data)
-				// if err != nil {
-				// 	log.Println(err)
-				// }
-				// fmt.Println(string(mq.GetMQData(customerData)))
-				tokens, err := c.GetChatroomMemberToken(results[1].Str)
+				err := c.np.SendMessageTopic(data)
 				if err != nil {
 					log.Println(err)
-					if err := c.WriteMessage(RespInternalError(2000)); err != nil {
-						log.Println(err)
-					}
 				}
 
-				offlineMember := []string{}
-				for _, token := range tokens {
-					client, ok := allConn.Load(token)
-					if !ok {
-						// log.Println("user not exists")
-						offlineMember = append(offlineMember, token)
-						continue
-					}
-					go func() {
-						err := client.(*WebsocketClient).WriteMessage(RespChatroomMessage(results[1].Str, results[2].Str))
-						if err != nil {
-							log.Println(err)
-							return
-						}
-					}()
-				}
-
-				if err := redis.NewRedisClient().RenewExpireTime(results[1].Str); err != nil {
-					log.Println(err)
-				}
-				if err := redis.NewRedisClient().RemoveMember(results[1].Str, offlineMember...); err != nil {
-					log.Println(err)
-				}
 			default:
 				if err := c.WriteMessage(RespInternalError(19999)); err != nil {
 					log.Println(err)
@@ -197,6 +166,7 @@ func (c *WebsocketClient) ProcessMessage() {
 
 func (c *WebsocketClient) CloseClient() error {
 	close(c.data)
+	c.np.Producer.Stop()
 	return c.wsConn.Close()
 }
 
@@ -226,6 +196,47 @@ func (c *WebsocketClient) PushChatroomMember(chatroomID string, token []string) 
 
 func (c *WebsocketClient) GetChatroomMemberToken(chatroomID string) ([]string, error) {
 	return c.rc.GetMember(chatroomID)
+}
+
+func (c *WebsocketClient) ReadChatroomMessage() {
+	for {
+		select {
+		case data := <-customerData:
+			fmt.Println(string(data))
+			if data != nil {
+				results := gjson.GetManyBytes(data, "action", "data.chatroom", "data.message")
+
+				tokens, err := c.GetChatroomMemberToken(results[1].Str)
+				if err != nil {
+					log.Println(err)
+					if err := c.WriteMessage(RespInternalError(2000)); err != nil {
+						log.Println(err)
+					}
+				}
+
+				offlineMember := []string{}
+				for _, token := range tokens {
+					client, ok := allConn.Load(token)
+					if !ok {
+						// log.Println("user not exists")
+						offlineMember = append(offlineMember, token)
+						continue
+					}
+					go func() {
+						err := client.(*WebsocketClient).WriteMessage(RespChatroomMessage(results[1].Str, results[2].Str))
+						if err != nil {
+							log.Println(err)
+							return
+						}
+					}()
+				}
+
+				if err := redis.NewRedisClient().RenewExpireTime(results[1].Str); err != nil {
+					log.Println(err)
+				}
+			}
+		}
+	}
 }
 
 func SendMessage(token string, message []byte) error {
