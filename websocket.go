@@ -54,9 +54,9 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 
 	c := NewWsClient(conn, token)
 	var initCustomer sync.Once
-	customerData = make(chan []byte, 3000)
-	go initCustomer.Do(func() {
-		mq.NewCustomer(customerData)
+	initCustomer.Do(func() {
+		customerData = make(chan []byte, 3000)
+		go mq.NewCustomer(customerData)
 	})
 	go c.ReadMessage()
 	go c.ProcessMessage()
@@ -118,7 +118,7 @@ func (c *WebsocketClient) ProcessMessage() {
 				// log.Println("channel not ready")
 				return
 			}
-
+			fmt.Println(string(data))
 			results := gjson.GetManyBytes(data, "action", "data.chatroom", "data.message")
 
 			switch results[0].Str {
