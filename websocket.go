@@ -28,6 +28,7 @@ var upgrader = websocket.Upgrader{
 var (
 	allConn      sync.Map
 	customerData chan []byte
+	producer     *mq.NsqProducer
 )
 
 type WebsocketClient struct {
@@ -36,7 +37,6 @@ type WebsocketClient struct {
 	wsConn *websocket.Conn
 	data   chan []byte
 	rc     *redis.RedisConnection
-	np     *mq.NsqProducer
 }
 
 func wsHandle(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +56,7 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 	var initCustomer sync.Once
 	initCustomer.Do(func() {
 		customerData = make(chan []byte, 3000)
+		producer = mq.NewProducer()
 		go mq.NewCustomer(customerData)
 	})
 	go c.ReadMessage()
@@ -71,7 +72,6 @@ func NewWsClient(conn *websocket.Conn, token string) *WebsocketClient {
 		wsConn: conn,
 		data:   make(chan []byte, 3000),
 		rc:     redis.NewRedisClient(),
-		np:     mq.NewProducer(),
 	}
 
 	allConn.Store(token, client)
@@ -113,12 +113,8 @@ type ChatroomData struct {
 func (c *WebsocketClient) ProcessMessage() {
 	for {
 		select {
-		case data, ok := <-c.data:
-			if !ok {
-				// log.Println("channel not ready")
-				return
-			}
-			fmt.Println(string(data))
+		case data := <-c.data:
+			// fmt.Println(string(data))
 			results := gjson.GetManyBytes(data, "action", "data.chatroom", "data.message")
 
 			switch results[0].Str {
@@ -148,17 +144,15 @@ func (c *WebsocketClient) ProcessMessage() {
 					log.Println(err)
 				}
 			case "chat":
-				err := c.np.SendMessageTopic(data)
+				err := producer.SendMessageTopic(data)
 				if err != nil {
 					log.Println(err)
 				}
-
 			default:
 				if err := c.WriteMessage(RespInternalError(19999)); err != nil {
 					log.Println(err)
 				}
 			}
-		default:
 		}
 
 	}
@@ -166,7 +160,6 @@ func (c *WebsocketClient) ProcessMessage() {
 
 func (c *WebsocketClient) CloseClient() error {
 	close(c.data)
-	c.np.Producer.Stop()
 	return c.wsConn.Close()
 }
 
@@ -202,7 +195,7 @@ func (c *WebsocketClient) ReadChatroomMessage() {
 	for {
 		select {
 		case data := <-customerData:
-			fmt.Println(string(data))
+			// fmt.Println(string(data))
 			if data != nil {
 				results := gjson.GetManyBytes(data, "action", "data.chatroom", "data.message")
 
@@ -214,12 +207,9 @@ func (c *WebsocketClient) ReadChatroomMessage() {
 					}
 				}
 
-				offlineMember := []string{}
 				for _, token := range tokens {
 					client, ok := allConn.Load(token)
 					if !ok {
-						// log.Println("user not exists")
-						offlineMember = append(offlineMember, token)
 						continue
 					}
 					go func() {

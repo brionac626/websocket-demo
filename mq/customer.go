@@ -22,15 +22,16 @@ func NewCustomer(messageData chan []byte) {
 	}
 
 	c.SetLogger(nil, nsq.LogLevelError)
-	c.AddHandler(&MessageHandler{MessageChan: messageData})
+	c.ChangeMaxInFlight(100)
+	c.AddConcurrentHandlers(&MessageHandler{MessageChan: messageData}, 100)
 
 	if err := c.ConnectToNSQLookupd(nsqLookUpURL); err != nil {
 		log.Println(err)
 		return
 	}
 
-	block := make(chan bool)
-	<-block
+	for {
+	}
 }
 
 type MessageHandler struct {
