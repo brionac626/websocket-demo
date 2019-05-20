@@ -22,7 +22,7 @@ func NewProducer() *NsqProducer {
 	}
 
 	p.SetLogger(nil, nsq.LogLevelError)
-	p.Stop()
+	// p.Stop()
 
 	return &NsqProducer{Producer: p}
 }
@@ -33,7 +33,7 @@ func (np *NsqProducer) SendMessageTopic(message []byte) error {
 		return err
 	}
 
-	np.Producer.Stop()
+	// np.Producer.Stop()
 
 	return nil
 }
