@@ -9,12 +9,16 @@ import (
 	"sync"
 	"time"
 
+	jwt "github.com/dgrijalva/jwt-go"
+
 	"websocket_demo/mq"
 	"websocket_demo/redis"
 
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
 )
+
+const secretKey = "demoService"
 
 var upgrader = websocket.Upgrader{
 	HandshakeTimeout: 1 * time.Minute,
@@ -46,13 +50,18 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := r.URL.Query().Get("token")
-	if token == "" {
+	tokenString := r.URL.Query().Get("token")
+	if tokenString == "" {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
-	c := NewWsClient(conn, token)
+	if !tokenVerify(tokenString) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	c := NewWsClient(conn, tokenString)
 	var initCustomer sync.Once
 	initCustomer.Do(func() {
 		customerData = make(chan []byte, 3000)
@@ -248,6 +257,19 @@ func ShowServerStatus() {
 			fmt.Println(allConn)
 		}
 	}
+}
+
+func tokenVerify(tokenString string) bool {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return []byte(secretKey), nil
+	})
+
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+
+	return token.Valid
 }
 
 func RespSuccessCreateChatroom(chatroomID string) []byte {
