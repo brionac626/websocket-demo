@@ -44,12 +44,6 @@ type WebsocketClient struct {
 }
 
 func wsHandle(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
 	tokenString := r.URL.Query().Get("token")
 	if tokenString == "" {
 		w.WriteHeader(http.StatusForbidden)
@@ -58,6 +52,12 @@ func wsHandle(w http.ResponseWriter, r *http.Request) {
 
 	if !tokenVerify(tokenString) {
 		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
 		return
 	}
 
