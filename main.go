@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	// _ "net/http/pprof"
-	"websocket_demo/redis"
+	"websocket-demo/redis"
 )
 
 func main() {
@@ -14,5 +14,6 @@ func main() {
 	}
 	http.HandleFunc("/ws", wsHandle)
 	// go http.ListenAndServe(":12345", nil)
+	log.Println("server up and running...")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

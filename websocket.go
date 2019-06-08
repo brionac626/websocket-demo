@@ -11,8 +11,8 @@ import (
 
 	jwt "github.com/dgrijalva/jwt-go"
 
-	"websocket_demo/mq"
-	"websocket_demo/redis"
+	"websocket-demo/mq"
+	"websocket-demo/redis"
 
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
