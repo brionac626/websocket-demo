@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	// _ "net/http/pprof"
-	"websocket-demo/redis"
+	"github.com/brionac626/websocket-demo/redis"
 )
 
 func main() {
